@@ -194,13 +194,11 @@ class BatchNormalization:
         self.beta = 0
         self.flg = True
         self.momentum = momentum
-        self.input_shape = None # Conv層の場合は4次元、全結合層の場合は2次元
+        self.input_shape = None
 
-        # テスト時に使用する平均と分散
         self.running_mean = running_mean
         self.running_var = running_var
 
-        # backward時に使用する中間データ
         self.batch_size = None
         self.xc = None
         self.xn = None
