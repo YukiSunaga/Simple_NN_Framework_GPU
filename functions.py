@@ -14,14 +14,27 @@ def conv_output_size(input_size, filter_size, stride=1, pad=0):
 def np_log(x):
     return np.log(np.clip(a=x, a_min=1e-10, a_max=x))
 
+'''
 def softmax(x):
     x -= x.max(axis=1, keepdims=True) # expのunderflow & overflowを防ぐ
     x_exp = np.exp(x)
     return x_exp / np.sum(x_exp, axis=1, keepdims=True)
+'''
+
+def softmax(x):
+    if x.ndim == 2:
+        x = x.T
+        x = x - np.max(x, axis=0)
+        y = np.exp(x) / np.sum(np.exp(x), axis=0)
+        return y.T
+
+    x = x - np.max(x) # オーバーフロー対策
+    return np.exp(x) / np.sum(np.exp(x))
 
 def cross_entropy(y, t):
     batch_size = y.shape[0]
-    return -np.sum( t*np_log(y) ) / batch_size
+    delta = 1e-7
+    return -np.sum(t * np.log(y+delta)) / batch_size
 
 def to_one_hot_label(X, outsize):
     T = np.zeros((X.size, outsize))

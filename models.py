@@ -69,6 +69,31 @@ class Model:
         acc = np.sum(y == t) / float(x.shape[0])
         return loss, acc
 
+    def loss_acc_all(self, x, t, psize=64):
+        size = int(x.shape[0]/psize)
+        rem = x.shape[0] - size*psize
+        loss = 0
+        acc = 0
+        now_iter = 0
+
+        for i in range(size):
+            l, a = self.loss_acc(x[psize*i:psize*(i+1)], t[psize*i:psize*(i+1)])
+            loss += l / size
+            acc += a / size
+            now_iter += 1
+            sys.stdout.write("\r %d / %d" %(now_iter, size+2))
+            sys.stdout.flush()
+
+        if not rem == 0:
+            l, a = self.loss_acc(x[psize*size:], t[psize*size:])
+            loss += l / size
+            acc += a / size
+            now_iter += 1
+            sys.stdout.write("\r %d / %d" %(now_iter, size+2))
+            sys.stdout.flush()
+
+        return loss, acc
+
     def _fit(self, x, t):
         loss = self.loss(x, t, train_flg=True)
         layers_r = self.layers.copy()
@@ -94,9 +119,17 @@ class Model:
             x_batch = x_train[batch_mask]
             y_batch = y_train[batch_mask]
 
-            loss += self._fit(x_batch, y_batch)
+            loss += self._fit(x_batch, y_batch) / iter_per_epoch
+            '''
+            ma = 0.
+            for l in self.layers:
+                maxx = np.max(np.abs(l.W))
+                if maxx > ma:
+                    ma = maxx
+            '''
 
-            sys.stdout.write("\repoch %d | %d / %d | train_loss %f" %(epoch, piter, iter_per_epoch+1, loss/piter))
+            #sys.stdout.write("\repoch %d | %d / %d | train_loss %f | %f" %(epoch, piter, iter_per_epoch, loss*iter_per_epoch/piter, ma))
+            sys.stdout.write("\repoch %d | %d / %d | train_loss %f" %(epoch, piter, iter_per_epoch, loss*iter_per_epoch/piter))
             sys.stdout.flush()
 
             if iter % iter_per_epoch == 0:
@@ -107,10 +140,9 @@ class Model:
                 t_acc = 0
                 for i in range(size):
                     loss, acc = self.loss_acc(x_test[32*i:32*(i+1)], y_test[32*i:32*(i+1)])
-                    t_loss += loss
-                    t_acc += acc
-                t_loss /= size
-                t_acc /= size
+                    t_loss += loss / size
+                    t_acc += acc / size
+
                 print('\n ', 'test_loss', t_loss, 'test_acc', t_acc)
 
                 tr_loss_list.append(loss/piter)
@@ -128,21 +160,16 @@ class Model:
         tr_acc = 0
         for i in range(size):
             loss, acc = self.loss_acc(x_train[32*i:32*(i+1)], y_train[32*i:32*(i+1)])
-            tr_loss += loss
-            tr_acc += acc
-        tr_loss /= size
-        tr_acc /= size
-
+            tr_loss += loss / size
+            tr_acc += acc / size
 
         size = int(x_test.shape[0]/32)
         ts_loss = 0
         ts_acc = 0
         for i in range(size):
             loss, acc = self.loss_acc(x_test[32*i:32*(i+1)], y_test[32*i:32*(i+1)])
-            ts_loss += loss
-            ts_acc += acc
-        ts_loss /= size
-        ts_acc /= size
+            ts_loss += loss / size
+            ts_acc += acc / size
 
         tr_loss_list.append(tr_loss)
         ts_loss_list.append(ts_loss)
@@ -204,11 +231,18 @@ class Conv_Model(Model):
 class Conv_Model3(Model):
     def __init__(self, epochs=20, batch_size=128):
         super().__init__(epochs, batch_size)
-        self.layers.append(Conv(kernels=32, input_shape=(1,28,28), conv_shape=(5,5), conv_pad=2, pool_shape=(2,2), activation='Relu', batchnorm=True, pos_of_bn=2, optimizer='Nesterov', eps=0.015))
-        self.layers.append(Conv(kernels=64, input_shape=(32,14,14), conv_shape=(3,3), conv_pad=2, pool_shape=(2,2), activation='Relu', batchnorm=True, pos_of_bn=2, optimizer='Nesterov', eps=0.015))
-        self.layers.append(Dense(input_shape=(64*8*8, ), output_shape=(64*8*8, ), activation='Relu', batchnorm=True, optimizer='Nesterov', eps=0.015))
-        self.layers.append(Dense(input_shape=(64*8*8, ), output_shape=(10, ), activation='Softmax', optimizer='Nesterov', eps=0.015))
+        self.layers.append(Conv(kernels=32, input_shape=(1,28,28), conv_shape=(5,5), conv_pad=2, pool_shape=(2,2), activation='Relu', batchnorm=True, pos_of_bn=1, optimizer='Nesterov', eps=0.015))
+        self.layers.append(Conv(kernels=32, input_shape=(32,14,14), conv_shape=(5,5), conv_pad=2, pool_shape=(2,2), activation='Relu', batchnorm=True, pos_of_bn=1, optimizer='Nesterov', eps=0.015))
+        self.layers.append(Dense(input_shape=(32*7*7, ), output_shape=(32*7*7, ), activation='Relu', optimizer='Nesterov', eps=0.015))
+        self.layers.append(Dense(input_shape=(32*7*7, ), output_shape=(10, ), activation='Softmax', optimizer='Nesterov', eps=0.015))
 
+class Conv_Model32(Model):
+    def __init__(self, epochs=20, batch_size=128, weight_decay=0.0001, batchnorm=True, dropout=True, dropout_ratio=0.2):
+        super().__init__(epochs, batch_size)
+        self.layers.append(Conv(kernels=32, input_shape=(1,28,28), conv_shape=(5,5), conv_pad=2, pool_shape=(2,2), activation='Relu', batchnorm=True, pos_of_bn=1, weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, optimizer='Nesterov', eps=0.015))
+        self.layers.append(Conv(kernels=32, input_shape=(32,14,14), conv_shape=(5,5), conv_pad=2, pool_shape=(2,2), activation='Relu', batchnorm=True, pos_of_bn=1, weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, optimizer='Nesterov', eps=0.015))
+        self.layers.append(Dense(input_shape=(32*7*7, ), output_shape=(32*7*7, ), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, optimizer='Nesterov', eps=0.015))
+        self.layers.append(Dense(input_shape=(32*7*7, ), output_shape=(10, ), activation='Softmax', weight_decay=weight_decay, optimizer='Nesterov', eps=0.015))
 
 
 class Conv_Model_WDDOBN(Model):
@@ -220,7 +254,7 @@ class Conv_Model_WDDOBN(Model):
 
 
 class Conv_Model2_WDDOBN(Model):
-    def __init__(self, epochs=20, batch_size=128, kernels=8, hid_size=16, weight_decay=0.0, batchnorm=True, dropout=False, dropout_ratio=0.1, optimizer='Adam', eps=0.01):
+    def __init__(self, epochs=20, batch_size=128, kernels=32, hid_size=64, weight_decay=0.0001, batchnorm=True, dropout=True, dropout_ratio=0.25, optimizer='Adam', eps=0.01):
         super().__init__(epochs, batch_size)
         self.layers.append(Conv(kernels=kernels, input_shape=(1,28,28), conv_shape=(3,3), conv_pad=0, pool_shape=(2,2), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
         self.layers.append(Conv(kernels=kernels, input_shape=(kernels,13,13), conv_shape=(4,4), conv_pad=0, pool_shape=(2,2), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
