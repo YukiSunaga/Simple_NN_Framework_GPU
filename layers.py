@@ -7,7 +7,7 @@ from functions import *
 
 class Dense:
     def __init__(self, input_shape=(784, ), output_shape=(10, ), activation='Relu',
-                batchnorm=False, dropout=False, dropout_ratio=0.5, weight_decay=0.0,
+                batchnorm=False, pos_of_bn=1, dropout=False, dropout_ratio=0.5, weight_decay=0.0,
                 optimizer='SGD', eps=0.01):
         self.W = np.sqrt(2.0 / input_shape[0]) * np.random.randn( input_shape[0], output_shape[0] )
         self.b = np.zeros(output_shape[0])
@@ -21,13 +21,14 @@ class Dense:
             self.batchnorm = BatchNormalization()
         else:
             self.batchnorm = None
+        self.posofbn = pos_of_bn
         if dropout:
             self.dropout = Dropout(dropout_ratio=dropout_ratio)
         else:
             self.dropout = None
 
     def forward(self, x, train_flg=False):
-        if not self.batchnorm is None:
+        if self.batchnorm is not None and self.posofbn == 0:
             x = self.batchnorm.forward(x, train_flg)
 
         self.x_shape = x.shape
@@ -36,7 +37,10 @@ class Dense:
         u = np.dot(self.x, self.W) + self.b
         self.u = u
 
-        y = self.activation.forward(self.u)
+        if self.batchnorm is not None and self.posofbn == 1:
+            u = self.batchnorm.forward(u, train_flg)
+
+        y = self.activation.forward(u)
 
         if not self.dropout is None:
             y = self.dropout.forward(y, train_flg)
@@ -48,13 +52,16 @@ class Dense:
             delta = self.dropout.backward(delta)
         dx = self.activation.backward(delta)
 
+        if self.batchnorm is not None and self.posofbn == 1:
+            dx = self.batchnorm.backward(dx)
+
         self.dW = np.dot(self.x.T, dx) + self.weight_decay * self.W
         self.db = np.sum(dx, axis=0)
 
         dx = np.dot(dx, self.W.T)
         dx = dx.reshape(*self.x_shape)
 
-        if not self.batchnorm is None:
+        if self.batchnorm is not None and self.posofbn == 0:
             dx = self.batchnorm.backward(dx)
 
         self.optimizer.update([self.W, self.b], [self.dW, self.db])
@@ -65,7 +72,7 @@ class Dense:
 class Conv:
     def __init__(self, kernels=8, input_shape=(1,28,28), conv_shape=(5,5), conv_pad=0, conv_stride=1,
                 pool_shape=(2,2), pool_pad=0, pool_stride=2,
-                batchnorm=False, pos_of_bn=0, dropout=False, dropout_ratio=0.25, weight_decay=0.0,
+                batchnorm=False, pos_of_bn=1, dropout=False, dropout_ratio=0.25, weight_decay=0.0,
                 activation='Relu', optimizer='SGD', eps=0.01):
         self.W = np.sqrt(2.0/ (conv_shape[0] * conv_shape[1])) * np.random.randn( kernels, input_shape[0], conv_shape[0], conv_shape[1] )
         self.b = np.zeros(kernels)
