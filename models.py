@@ -222,11 +222,11 @@ class Hid_Model(Model):
         self.layers.append(Dense(input_shape=(hid_size, ), output_shape=(10, ), activation='Softmax'))
 
 class Conv_Model(Model):
-    def __init__(self, epochs=10, batch_size=64):
+    def __init__(self, epochs=20, batch_size=64):
         super().__init__(epochs, batch_size)
-        self.layers.append(Conv(kernels=8, input_shape=(1,28,28), conv_shape=(5,5), conv_pad=0, pool_shape=(2,2), activation='Relu', optimizer='Adam', eps=0.001))
-        self.layers.append(Dense(input_shape=(8*12*12, ), output_shape=(32, ), activation='Relu', optimizer='Adam', eps=0.001))
-        self.layers.append(Dense(input_shape=(32, ), output_shape=(10, ), activation='Softmax', optimizer='Adam', eps=0.001))
+        self.layers.append(Conv(kernels=16, input_shape=(1,28,28), conv_shape=(5,5), conv_pad=0, pool_shape=(2,2), activation='Relu', optimizer='Adam', eps=0.001))
+        self.layers.append(Dense(input_shape=(8*12*12, ), output_shape=(64, ), activation='Relu', optimizer='Adam', eps=0.001))
+        self.layers.append(Dense(input_shape=(64, ), output_shape=(10, ), activation='Softmax', optimizer='Adam', eps=0.001))
 
 class Conv_Model3(Model):
     def __init__(self, epochs=20, batch_size=128):
@@ -265,13 +265,13 @@ class Conv_Model2_WDDOBN(Model):
 
 
 class Res_Model(Model):
-    def __init__(self, epochs=100, batch_size=128, kernels=32, hid_size=256, weight_decay=0.0001, batchnorm=True, dropout=True, dropout_ratio=0.5, optimizer='Nesterov', eps=0.1):
+    def __init__(self, epochs=100, batch_size=128, kernels=32, weight_decay=0.0001, batchnorm=True, dropout=True, dropout_ratio=0.4, optimizer='Nesterov', eps=0.1):
         super().__init__(epochs, batch_size)
         self.layers.append(Conv(kernels=kernels, input_shape=(1,28,28), conv_shape=(5,5), conv_pad=0, pool_shape=(2,2), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
         self.layers.append(Residual_Block(kernels=kernels, input_shape=(kernels,12,12), conv_shape=(5,5), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
-        self.layers.append(Residual_Block(kernels=kernels, input_shape=(kernels,12,12), conv_shape=(5,5), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
-        self.layers.append(Dense(input_shape=(kernels*12*12, ), output_shape=(hid_size, ), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
-        self.layers.append(Dense(input_shape=(hid_size, ), output_shape=(10, ), activation='Softmax', weight_decay=weight_decay, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
+        self.layers.append(Residual_Block(kernels=kernels, input_shape=(kernels,12,12), conv_shape=(5,5), pool_shape=(2,2), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
+        self.layers.append(Dense(input_shape=(kernels*6*6, ), output_shape=(kernels*6*6, ), activation='Relu', weight_decay=weight_decay, dropout=dropout, dropout_ratio=dropout_ratio, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
+        self.layers.append(Dense(input_shape=(kernels*6*6, ), output_shape=(10, ), activation='Softmax', weight_decay=weight_decay, batchnorm=batchnorm, optimizer=optimizer, eps=eps))
 
 class W_Res_Model(Model):
     def __init__(self, epochs=200, batch_size=128, kernels=32, hid_size=256, weight_decay=0.0005, batchnorm=True, dropout=True, dropout_ratio=0.5, optimizer='Nesterov', eps=0.1):

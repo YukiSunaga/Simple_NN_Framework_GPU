@@ -193,6 +193,49 @@ class Conv:
         return dx
 
 
+class Pool:
+    def __init__(self, pool_shape=(2,2), pool_pad=0, pool_stride=2):
+        self.pool_shape = pool_shape
+        self.pool_pad = pool_pad
+        self.pool_stride = pool_stride
+        self.arg_max = None
+        self.x_shape = None
+
+
+    def forward(self, x, train_flg=False):
+        self.x_shape = x.shape
+        y = x
+        if self.pool_shape[0] != 0 and self.pool_shape[1] != 0:
+            N, C, H, W = y.shape
+            out_h = 1 + int((H + 2*self.pool_pad - self.pool_shape[0]) / self.pool_stride)
+            out_w = 1 + int((W + 2*self.pool_pad - self.pool_shape[1]) / self.pool_stride)
+
+            y = im2col(y, self.pool_shape[0], self.pool_shape[1], self.pool_stride, self.pool_pad)
+            y = y.reshape(-1, self.pool_shape[0]*self.pool_shape[1])
+
+            arg_max = np.argmax(y, axis=1)
+            y = np.max(y, axis=1)
+            y= y.reshape(N, out_h, out_w, C).transpose(0, 3, 1, 2)
+
+            self.arg_max = arg_max
+
+        return y
+
+    def backward(self, delta):
+        if self.pool_shape[0] != 0 and self.pool_shape[1] != 0:
+            delta = delta.transpose(0, 2, 3, 1)
+            pool_size = self.pool_shape[0] * self.pool_shape[1]
+            dmax = np.zeros((delta.size, pool_size))
+            dmax[np.arange(self.arg_max.size), self.arg_max.flatten()] = delta.flatten()
+            dmax = dmax.reshape(delta.shape + (pool_size,))
+
+            dcol = dmax.reshape(dmax.shape[0] * dmax.shape[1] * dmax.shape[2], -1)
+            delta = col2im(dcol, self.x_shape, self.pool_shape[0], self.pool_shape[1], self.pool_stride, self.pool_pad)
+
+        return delta
+
+
+
 class Dropout:
     def __init__(self, dropout_ratio=0.5):
         self.dropout_ratio = dropout_ratio
@@ -303,7 +346,7 @@ class BatchNormalization:
         return dx
 
 class Residual_Block:
-    def __init__(self, input_shape, kernels=32, conv_shape=(3,3),
+    def __init__(self, input_shape, kernels=32, conv_shape=(3,3), pool_shape=(0,0),
                 batchnorm=False, dropout=False, dropout_ratio=0.25, weight_decay=0.0,
                 activation='Relu', optimizer='Adam', eps=0.001):
         self.filters = kernels
@@ -321,6 +364,10 @@ class Residual_Block:
                             optimizer=optimizer, batchnorm=batchnorm, weight_decay=weight_decay, dropout=False, dropout_ratio=dropout_ratio,
                             activation=activation, eps=eps)
 
+        self.pool = None
+        if pool_shape[0] != 0 and pool_shape[1] != 0:
+            self.pool = Pool(pool_shape=pool_shape)
+
     def forward(self, x, train_flg=False):
         y = self.conv1.forward(x, train_flg)
         y = self.conv2.forward(y, train_flg)
@@ -331,12 +378,78 @@ class Residual_Block:
         else:
             shortcut = x
         y = y + shortcut
+
+        if not self.pool is None:
+            y = self.pool.forward(x, train_flg)
+
         return y
 
     def backward(self, delta):
+        if not self.pool is None:
+            delta = self.pool.backward(delta)
         dx = self.conv2.backward(delta)
         dx = self.conv1.backward(dx)
         if self.input_shape[0] < self.filters:
             delta = delta[:,:self.input_shape[0]]
         dx = delta + dx
         return dx
+
+
+class DataAugmentation:
+    def __init__(self, hflip=True, vflip=True, shift=True, max_shift_px=2):
+        self.hflip = hflip
+        self.vflip = vflip
+        self.shift = shift
+        self.auglist = [self.id]
+        if hflip:
+            self.auglist.append(self.horizontal_flip)
+        if vflip:
+            self.auglist.append(self.vertical_flip)
+        if shift:
+            self.auglist.append(self.hv_shift)
+
+        self.max_shift_px = max_shift_px
+
+    def id(self, images):
+        return images
+
+    def horizontal_flip(self, images): # image.shape = (N, Channels, Height, Width)
+        out = images.copy()
+        out = out[:, :, :, ::-1]
+        return out
+
+    def vertical_flip(self, images): # image.shape = (N, Channels, Height, Width)
+        out = images.copy()
+        out = out[:, :, ::-1]
+        return out
+
+    def hv_shift(self, images):
+        size = images.shape[0]
+        hs = np.random.randint(0, self.max_shift_px+1, size)
+        vs = np.clip(np.random.randint(0, self.max_shift_px+1, size) - hs, 0, None)
+        hs *= np.random.choice([-1,1], size)
+        vs *= np.random.choice([-1,1], size)
+        out = images.copy()
+        for i in range(size):
+            out[i] = np.roll(out[i], hs[i], axis=2)
+            out[i,:,:,:hs[i]] = 0
+        for i in range(size):
+            out[i] = np.roll(out[i], vs[i], axis=1)
+            out[i,:,:vs[i]] = 0
+
+        return out
+
+    def forward(self, x, train_flg=False):
+        if (not train_flg) or len(self.auglist) == 1:
+            return x
+
+        y = x.copy()
+        size = x.shape[0]
+        aug = np.random.randint(0, len(self.auglist), size)
+        for i in range(size):
+            y[i] = self.auglist[aug[i]](x[i])
+
+        return y
+
+    def backward(self, delta):
+        return delta
