@@ -74,7 +74,7 @@ class Conv:
                 pool_shape=(2,2), pool_pad=0, pool_stride=2,
                 batchnorm=False, pos_of_bn=1, dropout=False, dropout_ratio=0.25, weight_decay=0.0,
                 activation='Relu', optimizer='SGD', eps=0.01):
-        self.W = np.sqrt(2.0/ (conv_shape[0] * conv_shape[1])) * np.random.randn( kernels, input_shape[0], conv_shape[0], conv_shape[1] )
+        self.W = np.sqrt(2.0/ (conv_shape[0] * conv_shape[1]*input_shape[0])) * np.random.randn( kernels, input_shape[0], conv_shape[0], conv_shape[1] )
         self.b = np.zeros(kernels)
         self.W_col = None
         self.conv_pad = conv_pad
@@ -423,7 +423,7 @@ class DataAugmentation:
         out = out[:, :, ::-1]
         return out
 
-    def hv_shift(self, images):
+    def hv_shift0(self, images):
         size = images.shape[0]
         hs = np.random.randint(0, self.max_shift_px+1, size)
         vs = np.clip(np.random.randint(0, self.max_shift_px+1, size) - hs, 0, None)
@@ -432,14 +432,43 @@ class DataAugmentation:
         out = images.copy()
         for i in range(size):
             out[i] = np.roll(out[i], hs[i], axis=2)
-            out[i,:,:,:hs[i]] = 0
+            if hs[i] > 0:
+                out[i,:,:,:hs[i]] = 0
+            elif hs[i] < 0:
+                out[i,:,:,hs[i]:] = 0
         for i in range(size):
             out[i] = np.roll(out[i], vs[i], axis=1)
-            out[i,:,:vs[i]] = 0
+            if vs[i] > 0:
+                out[i,:,:vs[i]] = 0
+            elif vs[i] < 0:
+                out[i,:,vs[i]:] = 0
 
         return out
 
-    def forward(self, x, train_flg=False):
+    def hv_shift(self, images):
+        import random
+        size = images.shape[0]
+        hs = np.random.randint(0, self.max_shift_px+1)
+        vs = np.clip(np.random.randint(0, self.max_shift_px+1) - hs, 0, None)
+        hs *= random.choice([-1,1])
+        vs *= random.choice([-1,1])
+        out = images.copy()
+
+        out = np.roll(out, hs, axis=3)
+        if hs > 0:
+            out[:,:,:,:hs] = 0
+        elif hs < 0:
+            out[:,:,:,hs:] = 0
+
+        out = np.roll(out, vs, axis=2)
+        if vs > 0:
+            out[:,:,:vs] = 0
+        elif vs < 0:
+            out[:,:,vs:] = 0
+
+        return out
+
+    def forward1(self, x, train_flg=False):
         if (not train_flg) or len(self.auglist) == 1:
             return x
 
@@ -447,7 +476,18 @@ class DataAugmentation:
         size = x.shape[0]
         aug = np.random.randint(0, len(self.auglist), size)
         for i in range(size):
-            y[i] = self.auglist[aug[i]](x[i])
+            y[i] = self.auglist[int(aug[i])](x[i].reshape( (1,) + x[i].shape )).reshape(x[i].shape)
+
+        return y
+
+
+    def forward(self, x, train_flg=False):
+        if (not train_flg) or len(self.auglist) == 1:
+            return x
+
+        size = x.shape[0]
+        aug = np.random.randint(0, len(self.auglist))
+        y = self.auglist[int(aug)](x)
 
         return y
 
